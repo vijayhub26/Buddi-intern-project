@@ -1,0 +1,21 @@
+Tax Invoice from Linkedln Singapore Pte Ltd                                                                        SAC: 998439
+EffectiveDate                         Transaction ID                         Invoice Number                       PurchaserEmail
+2/27/2026                                P823194156                              519209876252                         vijaydm26@gmail.com
+Amount                                    Transaction Date                    Billing Frequency                    Payment Method
+0.00                                        2/27/2026                                Monthly                                    UPI ****@oksbi
+Billed To                                   Customer Tax ID
+Vijay Bharath V                        N/A                                               Add Custom receipt details within Admin Center.
+India
+Summary
+Item      Description                                                                                                 Rate                Quantity                         Price
+Premium Career
+1                                                                                                                              846.61         1                               846.61
+From February 27, 2026 to March 27, 2026
+2           Promotion (100% off for 3 months)                                                                                                                  -846.61
+Subtotal :                                  0.00
+GST : 0%                                   0.00
+Total :                                       30.00
+Payment :                                 30.00
+Balance :                                  30.00
+Linkedln Singapore Pte Ltd, 10 Marina Boulevard, Marina Bay Financial Centre Tower 2, Singapore 018983
+SG GST: 201109821G                                                                                                                                                    Page l of 2

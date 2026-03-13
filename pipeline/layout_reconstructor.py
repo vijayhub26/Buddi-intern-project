@@ -37,7 +37,7 @@ def _box_height(box) -> float:
 def reconstruct_layout(
     ocr_results: OCRResult,
     line_height_tolerance: float = 0.6,
-    space_width_chars: float = 4.5,
+    space_width_chars: float = 18.0,
 ) -> str:
     """
     Reconstruct text from OCR results preserving the original layout.
@@ -55,9 +55,17 @@ def reconstruct_layout(
     if not ocr_results:
         return ""
 
-    # --- Sort all blocks by Y then X ---
     blocks = []
+    import re
     for box, text, score in ocr_results:
+        # Common OCR fixes
+        # Fix Rupee symbol misread as '3' at the start of a number block
+        text = re.sub(r'^3(\d+\.\d{2})', r'₹\1', text)
+        text = re.sub(r'^-3(\d+\.\d{2})', r'-₹\1', text)
+        
+        # Add space between CamelCase words (e.g. EffectiveDate -> Effective Date)
+        text = re.sub(r'([a-z])([A-Z])', r'\1 \2', text)
+        
         x, y = _box_top_left(box)
         right = _box_right(box)
         h = _box_height(box)

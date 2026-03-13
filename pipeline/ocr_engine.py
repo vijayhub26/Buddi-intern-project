@@ -48,8 +48,9 @@ class RapidOCREngine:
         max_dim = max(h, w)
         if hasattr(engine, 'text_det'):
             engine.text_det.limit_type = 'max'
-            # Give it a tiny bit of buffer padding, min 960px
-            engine.text_det.limit_side_len = max(max_dim + 32, 960)
+            # Limit the max dimension to a reasonable size for DBNet (e.g. 1280)
+            # instead of 3500+ which can cause the model to crop or fail on the right side.
+            engine.text_det.limit_side_len = 1280
             
         result, _ = engine(image)
         if result is None:

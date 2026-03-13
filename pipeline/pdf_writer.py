@@ -18,10 +18,10 @@ def _write_text_to_canvas(c: canvas.Canvas, text: str, width: float, height: flo
     margin_y = height - 40
     
     textobject.setTextOrigin(margin_x, margin_y)
-    textobject.setFont("Courier", 10)  # Monospace for layout preservation
+    textobject.setFont("Courier", 8)  # Monospace for layout preservation
     
     # Line height
-    leading = 12
+    leading = 10
     textobject.setLeading(leading)
 
     for line in text.splitlines():
@@ -31,7 +31,7 @@ def _write_text_to_canvas(c: canvas.Canvas, text: str, width: float, height: flo
             c.showPage()
             textobject = c.beginText()
             textobject.setTextOrigin(margin_x, margin_y)
-            textobject.setFont("Courier", 10)
+            textobject.setFont("Courier", 8)
             textobject.setLeading(leading)
             
         textobject.textLine(line)
@@ -47,10 +47,11 @@ def create_pdf_from_text(pages: List[PageResult], output_pdf_path: str):
         pages: List of (page_number, text_content) tuples.
         output_pdf_path: Path where the new PDF should be saved.
     """
-    # Use standard letter size (approx 8.5 x 11 inches)
-    page_width, page_height = letter
+    from reportlab.lib.pagesizes import landscape, letter
+    # Use landscape letter to fit wide tabular data
+    page_width, page_height = landscape(letter)
     
-    c = canvas.Canvas(output_pdf_path, pagesize=letter)
+    c = canvas.Canvas(output_pdf_path, pagesize=landscape(letter))
     
     for _, page_text in pages:
         _write_text_to_canvas(c, page_text, page_width, page_height)
