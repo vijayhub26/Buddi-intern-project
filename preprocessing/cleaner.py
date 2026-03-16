@@ -86,16 +86,10 @@ def clean_image(image, deskew_enabled: bool = True) -> np.ndarray:
     Steps:
         1. Convert to numpy BGR
         2. Grayscale
-        3. Denoise
-        4. CLAHE contrast enhancement
-        5. Deskew (optional)
-        (Binarization removed as it degrades high-quality PDF text)
+        3. CLAHE contrast enhancement
+        (Denoising and Deskewing removed for digital-first performance)
     """
     img = to_numpy(image)
     img = grayscale(img)
-    img = denoise(img)
     img = enhance_contrast(img)
-    # Skipping binarization - RapidOCR handles clean text better without it
-    if deskew_enabled:
-        img = deskew(img)
     return img

@@ -26,8 +26,8 @@ def parse_args():
         help="Path for the output .txt file. Defaults to results/<pdf_name>_<timestamp>.txt"
     )
     parser.add_argument(
-        "--dpi", type=int, default=300,
-        help="Rendering DPI for PDF pages (default: 300)."
+        "--dpi", type=int, default=200,
+        help="Rendering DPI for PDF pages (default: 200)."
     )
     parser.add_argument(
         "--no-deskew", action="store_true",
@@ -47,7 +47,7 @@ def parse_args():
 def progress(page_num: int, total: int):
     bar_len = 30
     filled = int(bar_len * page_num / total)
-    bar = "█" * filled + "░" * (bar_len - filled)
+    bar = "=" * filled + "." * (bar_len - filled)
     print(f"\r  [{bar}] Page {page_num}/{total}", end="", flush=True)
 
 

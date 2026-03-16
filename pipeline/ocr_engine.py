@@ -24,8 +24,8 @@ class RapidOCREngine:
     def _get_engine(self):
         if self._engine is None:
             from rapidocr_onnxruntime import RapidOCR
-            # text_score=0.5 helps filter noise
-            self._engine = RapidOCR(text_score=0.5, print_verbose=False)
+            # digital-first: text_score=0.6 reduces noise for sharp digital text
+            self._engine = RapidOCR(text_score=0.6, print_verbose=False)
             
             # Prevent cropping of high-DPI images (like 300 DPI A4/Letter size)
             # Default is limit_type='min' and limit_side_len=736 which crops wide images.
