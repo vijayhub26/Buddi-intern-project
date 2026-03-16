@@ -74,20 +74,21 @@ def main():
         print(f"  Pages  : {args.pages}")
     print()
 
-    page_results, _ = extract_text_from_pdf(
+    page_results, _, pages_data = extract_text_from_pdf(
         pdf_path=args.input,
         dpi=args.dpi,
         deskew=not args.no_deskew,
         min_confidence=args.min_confidence,
         pages=args.pages,
         progress_callback=progress,
+        return_raw=True,
     )
     print()  # newline after progress bar
 
-    # Write output to PDF
+    # Write output as a searchable PDF (image + invisible text overlay)
     os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)
-    from pipeline.pdf_writer import create_pdf_from_text
-    create_pdf_from_text(page_results, args.output)
+    from pipeline.pdf_writer import create_searchable_pdf
+    create_searchable_pdf(pages_data, args.output)
 
     print(f"\n Done! {len(page_results)} page(s) processed.")
     print(f"  Output saved to: {args.output}\n")
