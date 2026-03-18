@@ -67,7 +67,7 @@ def extract_text_from_pdf(
             ocr_results = [r for r in ocr_results if r[2] >= min_confidence]
 
         # 4. Reconstruct layout-preserving text
-        page_text = reconstruct_layout(ocr_results)
+        page_text = reconstruct_layout(ocr_results, page_width=img_w)
         page_results.append((page_num, page_text))
 
         # 5. Store raw data for overlay (original image + OCR boxes)

@@ -92,4 +92,5 @@ def clean_image(image, deskew_enabled: bool = True) -> np.ndarray:
     img = to_numpy(image)
     img = grayscale(img)
     img = enhance_contrast(img)
+    
     return img

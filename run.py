@@ -3,8 +3,9 @@ CLI entry point for the OCR MVP.
 
 Usage:
     python run.py --input path/to/file.pdf
-    python run.py --input path/to/file.pdf --output results/output.txt --dpi 300
+    python run.py --input path/to/file.pdf --output results/output.pdf --dpi 300
     python run.py --input path/to/file.pdf --pages 1 3 5   # specific pages only
+    python run.py --input path/to/file.pdf --txt           # also write a .txt layout file
 """
 import argparse
 import os
@@ -41,6 +42,15 @@ def parse_args():
         "--pages", nargs="+", type=int, default=None,
         help="Space-separated list of page numbers to process (1-indexed). All pages if omitted."
     )
+    parser.add_argument(
+        "--txt", action="store_true",
+        help="After creating the searchable PDF, also extract text and write a .txt layout file."
+    )
+    parser.add_argument(
+        "--space-width", type=float, default=6.0,
+        dest="space_width",
+        help="Space width in PDF points used when writing the .txt file (default: 6.0)."
+    )
     return parser.parse_args()
 
 
@@ -74,7 +84,7 @@ def main():
         print(f"  Pages  : {args.pages}")
     print()
 
-    page_results, _, pages_data = extract_text_from_pdf(
+    page_results, full_text, pages_data = extract_text_from_pdf(
         pdf_path=args.input,
         dpi=args.dpi,
         deskew=not args.no_deskew,
@@ -89,6 +99,13 @@ def main():
     os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)
     from pipeline.pdf_writer import create_searchable_pdf
     create_searchable_pdf(pages_data, args.output)
+
+    # Optionally save the text layout out as a .txt file using the raw OCR data
+    if args.txt:
+        txt_path = os.path.splitext(args.output)[0] + ".txt"
+        with open(txt_path, "w", encoding="utf-8") as f:
+            f.write(full_text)
+        print(f"  Layout .txt saved to: {txt_path}")
 
     print(f"\n Done! {len(page_results)} page(s) processed.")
     print(f"  Output saved to: {args.output}\n")
