@@ -51,7 +51,61 @@ def compute_accuracy(ground_truth: str, hypothesis: str) -> dict:
 
 
 # ──────────────────────────────────────────────────────────────
-# 3. Layout Fidelity — Generic metrics
+# 3. Clumping Detection
+# ──────────────────────────────────────────────────────────────
+def compute_clumping_metrics(text: str) -> dict:
+    """
+    Detect word-clumping errors in OCR output.
+
+    Patterns detected:
+      - Alpha-Numeric merge:   'Invoice51109'         → 'Invoice 51109'
+      - Numeric-Alpha merge:   '2013Invoice'          → '2013 Invoice'
+      - CamelCase join:        'invoiceDate'          → 'invoice Date'
+      - Keyword:value join:    'Total:$500'           → 'Total: $500'
+      - Long pure-alpha token: 'detailedinstructions' → 'detailed instructions'
+      - TitleCase run-on:      'PricesAreSubject'     → 'Prices Are Subject'
+
+    Returns:
+      clumped_token_count : number of tokens flagged as clumped.
+      total_token_count   : total tokens in the text.
+      non_clumped_pct     : percentage of tokens that are NOT clumped.
+      examples            : up to 5 example clumped tokens for inspection.
+    """
+    tokens = text.split()
+    total = len(tokens)
+    if total == 0:
+        return {"clumped_token_count": 0, "total_token_count": 0,
+                "non_clumped_pct": 100.0, "examples": []}
+
+    clump_patterns = [
+        re.compile(r'[a-zA-Z]{2,}\d{2,}'),              # alpha→numeric:  Invoice51109
+        re.compile(r'\d{2,}[a-zA-Z]{2,}'),              # numeric→alpha:  2013Invoice
+        re.compile(r'[a-z]{2,}[A-Z][a-z]'),             # camelCase:      invoiceDate
+        re.compile(r'[A-Za-z]{3,}:[A-Za-z$£€₹\d]'),   # keyword:value:  Total:$500
+        re.compile(r'^[a-zA-Z]{16,}$'),                  # long pure-alpha: detailedinstructions
+        re.compile(r'[A-Z][a-z]{4,}[A-Z][a-z]{2,}'),   # TitleRunon:     PricesAreSubject
+    ]
+
+    clumped = []
+    for tok in tokens:
+        # Strip punctuation wrappers before testing
+        clean = tok.strip('.,;:!?()\'"')
+        if any(p.search(clean) for p in clump_patterns):
+            clumped.append(tok)
+
+    clumped_count = len(clumped)
+    non_clumped_pct = (1 - clumped_count / total) * 100
+
+    return {
+        "clumped_token_count": clumped_count,
+        "total_token_count": total,
+        "non_clumped_pct": non_clumped_pct,
+        "examples": clumped[:5],
+    }
+
+
+# ──────────────────────────────────────────────────────────────
+# 4. Layout Fidelity — Generic metrics
 # ──────────────────────────────────────────────────────────────
 def _non_empty_lines(text: str) -> List[str]:
     return [ln for ln in text.splitlines() if ln.strip()]
@@ -199,14 +253,29 @@ def print_report(perf: dict, accuracy: dict, layout: dict, targets: dict):
 
     print("└───────────────────────────────────────────────────────────┘")
 
+    # Clumping Analysis
+    clump = layout.get("clumping", {})
+    if clump:
+        print("\n┌─ WORD CLUMPING ANALYSIS ──────────────────────────────────┐")
+        nc_pct = clump["non_clumped_pct"]
+        clump_t = targets.get("clump", 95.0)
+        clump_ok = "✅" if nc_pct >= clump_t else "❌"
+        print(f"│  Non-Clumped Words : {_bar(nc_pct, 100)}  {nc_pct:.1f}%  {clump_ok}  (target ≥ {clump_t}%)")
+        print(f"│  Clumped Tokens    : {clump['clumped_token_count']} / {clump['total_token_count']}")
+        if clump["examples"]:
+            print(f"│  Examples          : {', '.join(clump['examples'])}")
+        print("└───────────────────────────────────────────────────────────┘")
+
     # Overall Verdict
     print(f"\n{SEP}")
+    clump_pass = layout.get("clumping", {}).get("non_clumped_pct", 100) >= targets.get("clump", 95.0)
     if accuracy.get("error") is None and accuracy.get("wer") is not None:
-        ok = (accuracy["wer"] * 100 <= targets["wer"] and 
+        ok = (accuracy["wer"] * 100 <= targets["wer"] and
               accuracy["cer"] * 100 <= targets["cer"] and
-              (abs(layout.get("line_count_delta", 0)) <= targets["line_delta"]))
+              abs(layout.get("line_count_delta", 0)) <= targets["line_delta"] and
+              clump_pass)
         verdict = "✅  PRODUCTION READY" if ok else "⚠️   NEEDS IMPROVEMENT"
-    elif "line_count_delta" in layout and abs(layout["line_count_delta"]) <= targets["line_delta"]:
+    elif "line_count_delta" in layout and abs(layout["line_count_delta"]) <= targets["line_delta"] and clump_pass:
         verdict = "✅  LAYOUT STABLE (no accuracy GT provided)"
     else:
         verdict = "ℹ️   PARTIAL EVALUATION"
@@ -228,12 +297,14 @@ def parse_args():
     p.add_argument("--check-fragments", nargs="+", default=None)
     
     # Target Thresholds
-    p.add_argument("--target-wer", type=float, default=5.0, help="Target Max WER % (default: 5.0)")
-    p.add_argument("--target-cer", type=float, default=2.0, help="Target Max CER % (default: 2.0)")
+    p.add_argument("--target-wer", type=float, default=5.0, help="Target Max WER %% (default: 5.0)")
+    p.add_argument("--target-cer", type=float, default=2.0, help="Target Max CER %% (default: 2.0)")
     p.add_argument("--target-line-delta", type=int, default=5, help="Max line count difference (default: 5)")
-    p.add_argument("--target-multi-col", type=float, default=10.0, help="Min % of lines with gaps (default: 10.0)")
-    
+    p.add_argument("--target-multi-col", type=float, default=10.0, help="Min %% of multi-col lines (default: 10.0)")
+    p.add_argument("--target-clump", type=float, default=95.0, help="Min %% of non-clumped words (default: 95.0)")
+
     return p.parse_args()
+
 
 
 def main():
@@ -256,10 +327,12 @@ def main():
 
     accuracy = compute_accuracy(gt_text, result["full_text"]) if gt_text else {"error": "No ground truth."}
     layout = compute_layout_metrics(result["full_text"], gt_text, args.check_fragments)
-    
+    layout["clumping"] = compute_clumping_metrics(result["full_text"])
+
     targets = {
         "wer": args.target_wer, "cer": args.target_cer,
-        "line_delta": args.target_line_delta, "multi_col": args.target_multi_col
+        "line_delta": args.target_line_delta, "multi_col": args.target_multi_col,
+        "clump": args.target_clump,
     }
     print_report(result, accuracy, layout, targets)
 
