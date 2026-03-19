@@ -51,6 +51,10 @@ def parse_args():
         dest="space_width",
         help="Space width in PDF points used when writing the .txt file (default: 6.0)."
     )
+    parser.add_argument(
+        "--exclude", "-e", nargs="+", default=None,
+        help="Optional list of regex patterns to filter out from the OCR results."
+    )
     return parser.parse_args()
 
 
@@ -92,6 +96,7 @@ def main():
         pages=args.pages,
         progress_callback=progress,
         return_raw=True,
+        exclude_patterns=args.exclude,
     )
     print()  # newline after progress bar
 
