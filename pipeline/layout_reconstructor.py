@@ -5,35 +5,51 @@ Final 'Stabilized Column' Version.
 from typing import List, Tuple, Optional
 import numpy as np
 import re
+import wordninja
 
 OCRResult = List[Tuple[List, str, float]]
 
 def _de_clump(text: str) -> str:
+    """
+    Fix OCR word-clumping using structural patterns only.
+    No hardcoded vocabulary — works on any document.
+    """
     text = text.strip()
-    if not text: return ""
-    
-    # 1. Lower-to-Upper transition
+    if not text:
+        return ""
+
+    # 1. CamelCase split: 'invoiceDate' -> 'invoice Date'
     text = re.sub(r'([a-z])([A-Z])', r'\1 \2', text)
-    
-    # 2. Targeted footer splits (Specific to this document context)
-    text = re.sub(r'(Prices)(are)(subject)(to)(change)', r'\1 \2 \3 \4 \5', text, flags=re.IGNORECASE)
-    text = re.sub(r'(month)(until)(you)', r'\1 \2 \3', text, flags=re.IGNORECASE)
-    text = re.sub(r'(See)(here)(for)(detailed)', r'\1 \2 \3 \4', text, flags=re.IGNORECASE)
-    text = re.sub(r'(instructions)(on)(how)(to)(cancel)', r'\1 \2 \3 \4 \5', text, flags=re.IGNORECASE)
-    text = re.sub(r'(offer)(ends)', r'\1 \2', text, flags=re.IGNORECASE)
-    text = re.sub(r'(India)(GST)', r'\1 \2', text, flags=re.IGNORECASE)
-    text = re.sub(r'(Admin)(Center)', r'\1 \2', text, flags=re.IGNORECASE)
-    text = re.sub(r'(Custom)(receipt)', r'\1 \2', text, flags=re.IGNORECASE)
-    text = re.sub(r'(details)(within)', r'\1 \2', text, flags=re.IGNORECASE)
-    text = re.sub(r'(Please)(visit)', r'\1 \2', text, flags=re.IGNORECASE)
-    
-    # 3. Numeric/Letter transitions
+
+    # 2. Colon spacing: 'SAC:998439' -> 'SAC: 998439'
+    text = re.sub(r'(:)([^\s])', r'\1 \2', text)
+
+    # 2.5 Punctuation spacing: 'Cancel.See' -> 'Cancel. See' (ignores digits like 18,000)
+    text = re.sub(r'([.?!,;])([A-Za-z])', r'\1 \2', text)
+
+    # 3. Alpha→Digit boundary: 'Invoice51109' -> 'Invoice 51109'
     text = re.sub(r'([A-Za-z])(\d)', r'\1 \2', text)
-    text = re.sub(r'(\d)([A-Za-z])', r'\1 \2', text)
-    
-    # 4. Misspellings
+
+    # 4. Digit→Alpha boundary: '2013Invoice' -> '2013 Invoice'
+    text = re.sub(r'(\d)([A-Za-z]{2,})', r'\1 \2', text)
+
+    # 5. Long-Alpha split: 'detailedinstructions' -> 'detailed instructions'
+    #    Run wordninja on tokens that are purely alphabetical and long
+    tokens = text.split()
+    new_tokens = []
+    for tok in tokens:
+        clean_tok = tok.strip('.,;:!?()\'"')
+        if len(clean_tok) > 15 and clean_tok.isalpha():
+            # wordninja splits the word optimally based on English frequencies
+            # if it was TitleCaseRunOn, CamelCase handled it mostly, but this catches lowercase run-ons.
+            new_tokens.append(" ".join(wordninja.split(tok)))
+        else:
+            new_tokens.append(tok)
+    text = " ".join(new_tokens)
+
+    # 6. OCR misspelling correction for 'I' -> 'l'
     text = re.sub(r'\blf\b', 'If', text)
-    
+
     return text
 
 def reconstruct_layout(
