@@ -66,6 +66,39 @@ def _de_clump(text: str) -> str:
 
     return text
 
+
+def _de_fragment(text: str) -> str:
+    """Fix OCR fragmentation (over-splitting) errors on the fully reconstructed layout."""
+    if not text:
+        return text
+
+    # 1. Single-lowercase-letter orphans (e.g., 'Bharat h' -> 'Bharath')
+    #    Valid 1-letter words: 'A', 'I', 'a', 'i'. Also exclude common punctuation context like "He's" or "don't"
+    text = re.sub(r'\b([A-Za-z]{3,})\s+([b-hj-ru-z])\b', r'\1\2', text)
+
+    # 2. Fix ID prefixes: 'P 823194156' -> 'P823194156'
+    text = re.sub(r'\bP\s+(\d{6,})\b', r'P\1', text)
+
+    # 3. Clean up spaces around @ and common TLDs
+    text = re.sub(r'\s*@\s*', '@', text)
+    text = re.sub(r'\s*\.\s*(com|net|org|co|in|edu)\b', r'.\1', text, flags=re.IGNORECASE)
+
+    # 4. Clean fragmented usernames in emails (e.g. 'vijay dm 26@gmail.com')
+    #    Match alphanumeric chunks separated by 1 or 2 spaces max before an @
+    #    This strict `[ ]{1,2}` prevents eating large layout column gaps!
+    def stitch_email(match):
+        user = match.group(1)
+        domain = match.group(2)
+        # Avoid catching standard English phrases that just happen to end in an email
+        if any(w in user.lower() for w in [' at ', ' me ', ' contact ', ' reach ', ' email ']):
+            return match.group(0)
+        return user.replace(' ', '') + '@' + domain
+
+    text = re.sub(r'\b((?:[a-zA-Z0-9._-]+[ ]{1,2}){1,3}[a-zA-Z0-9._-]+)@([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})\b', stitch_email, text)
+
+    return text
+
+
 def reconstruct_layout(
     ocr_results: OCRResult,
     image: np.ndarray = None,
@@ -158,5 +191,8 @@ def reconstruct_layout(
             prev_char_pos = len(line_text)
             
         page_str += line_text.rstrip() + "\n"
+            
+    # Apply post-processing layer to stitch fragmented text globally
+    page_str = _de_fragment(page_str)
             
     return page_str
