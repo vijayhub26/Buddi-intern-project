@@ -6,6 +6,11 @@ from typing import List, Tuple, Optional
 import numpy as np
 import re
 import wordninja
+from spellchecker import SpellChecker
+
+# Initialize global spellchecker once (to avoid loading dictionary on every run)
+spell = SpellChecker()
+import wordninja
 
 OCRResult = List[Tuple[List, str, float]]
 
@@ -33,18 +38,27 @@ def _de_clump(text: str) -> str:
     # 4. Digit→Alpha boundary: '2013Invoice' -> '2013 Invoice'
     text = re.sub(r'(\d)([A-Za-z]{2,})', r'\1 \2', text)
 
-    # 5. Long-Alpha split: 'detailedinstructions' -> 'detailed instructions'
-    #    Run wordninja on tokens that are purely alphabetical and long
+    # 5. Generic Dictionary-based NLP Word Splitter
+    #    For any token >= 7 chars, check if it's a valid English word.
+    #    If it's not (e.g. 'tochange', 'detailswithin'), use wordninja to split it.
     tokens = text.split()
     new_tokens = []
+    
     for tok in tokens:
         clean_tok = tok.strip('.,;:!?()\'"')
-        if len(clean_tok) > 15 and clean_tok.isalpha():
-            # wordninja splits the word optimally based on English frequencies
-            # if it was TitleCaseRunOn, CamelCase handled it mostly, but this catches lowercase run-ons.
-            new_tokens.append(" ".join(wordninja.split(tok)))
+        
+        # We only consider splitting tokens that are pure letters and >= 7 chars.
+        if len(clean_tok) >= 7 and clean_tok.isalpha():
+            # If the token is NOT a known English word, use NLP to split it
+            # (Valid words like 'Invoice', 'instructions', 'Singapore' will be skipped)
+            if clean_tok.lower() not in spell:
+                split_words = wordninja.split(tok)
+                new_tokens.append(" ".join(split_words))
+            else:
+                new_tokens.append(tok)
         else:
             new_tokens.append(tok)
+            
     text = " ".join(new_tokens)
 
     # 6. OCR misspelling correction for 'I' -> 'l'
