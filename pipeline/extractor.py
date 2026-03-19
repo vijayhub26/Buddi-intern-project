@@ -24,6 +24,7 @@ def extract_text_from_pdf(
     pages: Optional[List[int]] = None,
     progress_callback=None,
     return_raw: bool = False,
+    exclude_patterns: Optional[List[str]] = None,
 ) -> Tuple:
     """
     Extract text from an image-based PDF preserving layout.
@@ -37,6 +38,7 @@ def extract_text_from_pdf(
                            If None, all pages are processed.
         progress_callback: Optional callable(page_num, total_pages) for progress.
         return_raw:        If True, also return pages_data for searchable PDF overlay.
+        exclude_patterns:  Optional list of regex patterns to filter out of the result.
 
     Returns:
         If return_raw=False: (page_results, full_text)
@@ -67,7 +69,12 @@ def extract_text_from_pdf(
             ocr_results = [r for r in ocr_results if r[2] >= min_confidence]
 
         # 4. Reconstruct layout-preserving text
-        page_text = reconstruct_layout(ocr_results, page_width=img_w)
+        page_text = reconstruct_layout(
+            ocr_results, 
+            image=cleaned,
+            page_width=img_w, 
+            exclude_patterns=exclude_patterns
+        )
         page_results.append((page_num, page_text))
 
         # 5. Store raw data for overlay (original image + OCR boxes)
