@@ -4,22 +4,34 @@ Ties together: PDF rendering → preprocessing → OCR → layout reconstruction
 """
 from typing import List, Tuple, Optional, Dict, Any
 from pipeline.pdf_renderer import render_pdf_pages, page_count
-from pipeline.ocr_engine import RapidOCREngine
+from pipeline.ocr_engine import get_ocr_engine
 from pipeline.layout_reconstructor import reconstruct_layout
 from preprocessing.cleaner import clean_image
 import numpy as np
-
-
+import wordninja
+from spellchecker import SpellChecker
+_spell = SpellChecker()
 PageResult = Tuple[int, str]  # (page_number, reconstructed_text)
 
 # Raw per-page data used for the searchable PDF overlay
 PageData = Dict[str, Any]  # {page_num, image, ocr_results, img_w, img_h}
-
+def fix_clumping(text: str) -> str:
+    """Split run-together words using wordninja."""
+    tokens = text.split()
+    fixed = []
+    for tok in tokens:
+        clean = tok.strip('.,;:!?()\'"')
+        # Only attempt to split long pure-alpha tokens not in dictionary
+        if len(clean) >= 7 and clean.isalpha() and clean.lower() not in _spell:
+            parts = wordninja.split(clean)
+            if len(parts) > 1:
+                tok = tok.replace(clean, " ".join(parts))
+        fixed.append(tok)
+    return " ".join(fixed)
 
 def extract_text_from_pdf(
     pdf_path: str,
     dpi: int = 200,
-    deskew: bool = True,
     min_confidence: float = 0.0,
     pages: Optional[List[int]] = None,
     progress_callback=None,
@@ -44,7 +56,8 @@ def extract_text_from_pdf(
         If return_raw=False: (page_results, full_text)
         If return_raw=True:  (page_results, full_text, pages_data)
     """
-    engine = RapidOCREngine()
+    engine = get_ocr_engine()
+
     total = page_count(pdf_path)
     page_results: List[PageResult] = []
     pages_data: List[PageData] = []
@@ -59,12 +72,20 @@ def extract_text_from_pdf(
         img_h, img_w = img.shape[:2]
 
         # 1. Preprocess with OpenCV
-        cleaned = clean_image(img, deskew_enabled=deskew)
+        cleaned = clean_image(img)
 
-        # 2. Run RapidOCR
+        # 2. Run PaddleOCR
         ocr_results = engine.recognize(cleaned)
 
-        # 3. Filter by confidence
+        # 3. Downscale coordinates back by 2.0 to compensate for the cleaner.py 2x upscale
+        scaled_results = []
+        for box, text, conf in ocr_results:
+            # Box is [[x1,y1], [x2,y2], [x3,y3], [x4,y4]]
+            scaled_box = [[pt[0] / 2.0, pt[1] / 2.0] for pt in box]
+            scaled_results.append((scaled_box, text, conf))
+        ocr_results = scaled_results
+
+        # 4. Filter by confidence
         if min_confidence > 0.0:
             ocr_results = [r for r in ocr_results if r[2] >= min_confidence]
 
@@ -73,10 +94,10 @@ def extract_text_from_pdf(
             ocr_results, 
             image=cleaned,
             page_width=img_w, 
-            exclude_patterns=exclude_patterns
+            exclude_patterns=exclude_patterns,
         )
         page_results.append((page_num, page_text))
-
+        page_text = fix_clumping(page_text)
         # 5. Store raw data for overlay (original image + OCR boxes)
         if return_raw:
             pages_data.append({

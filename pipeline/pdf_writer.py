@@ -155,16 +155,13 @@ def create_searchable_pdf(pages_data: List[PageData], output_pdf_path: str):
                 h_scale = (box_w_pt / natural_w) * 100.0
             else:
                 h_scale = 100.0
-            # Clamp scale to avoid extreme distortion for very short strings
-            h_scale = max(10.0, min(h_scale, 500.0))
-
-            textobj = c.beginText()
-            textobj.setTextRenderMode(3)   # invisible: no fill, no stroke
-            textobj.setFont("Helvetica", font_size)
-            textobj.setHorizScale(h_scale)
-            textobj.setTextOrigin(x_pt, y_baseline_pt)
-            textobj.textLine(text)
-            c.drawText(textobj)
+            c.saveState()
+            c._code.append('3 Tr')  # text render mode 3 (invisible)
+            if h_scale != 100.0:
+                c._code.append(f'{h_scale:.2f} Tz')  # horizontal scaling
+            c.setFont("Helvetica", font_size)
+            c.drawString(x_pt, y_baseline_pt, text)
+            c.restoreState()
 
         c.showPage()
 
