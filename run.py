@@ -31,10 +31,6 @@ def parse_args():
         help="Rendering DPI for PDF pages (default: 200)."
     )
     parser.add_argument(
-        "--no-deskew", action="store_true",
-        help="Disable automatic skew correction."
-    )
-    parser.add_argument(
         "--min-confidence", type=float, default=0.0,
         help="Minimum OCR confidence to include a text block (0.0–1.0)."
     )
@@ -79,11 +75,10 @@ def main():
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         args.output = os.path.join("results", f"{base}_{ts}.pdf")
 
-    print(f"\n OCR MVP — RapidOCR + OpenCV")
+    print(f"\n OCR MVP — PaddleOCR + OpenCV")
     print(f"  Input  : {args.input}")
     print(f"  Output : {args.output}")
     print(f"  DPI    : {args.dpi}")
-    print(f"  Deskew : {not args.no_deskew}")
     if args.pages:
         print(f"  Pages  : {args.pages}")
     print()
@@ -91,7 +86,6 @@ def main():
     page_results, full_text, pages_data = extract_text_from_pdf(
         pdf_path=args.input,
         dpi=args.dpi,
-        deskew=not args.no_deskew,
         min_confidence=args.min_confidence,
         pages=args.pages,
         progress_callback=progress,

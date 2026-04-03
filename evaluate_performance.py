@@ -22,6 +22,11 @@ import time
 import tracemalloc
 import math
 from typing import Optional, List
+import wordninja
+from spellchecker import SpellChecker
+
+# Initialize global spell checker for the evaluator
+spell = SpellChecker()
 
 
 # ──────────────────────────────────────────────────────────────
@@ -39,9 +44,15 @@ def compute_accuracy(ground_truth: str, hypothesis: str) -> dict:
     """Return CER and WER using jiwer."""
     try:
         import jiwer
-        # Use simple calls for jiwer 3.0+
-        wer = jiwer.wer(ground_truth, hypothesis)
-        cer = jiwer.cer(ground_truth, hypothesis)
+        
+        # Normalize whitespace (collapse multiple spaces to one) for fair comparison.
+        # This prevents the layout reconstructor's long column gaps from being counted
+        # as massive word errors against standard single-spaced ground truth.
+        gt_norm = re.sub(r'\s+', ' ', ground_truth).strip()
+        hyp_norm = re.sub(r'\s+', ' ', hypothesis).strip()
+
+        wer = jiwer.wer(gt_norm, hyp_norm)
+        cer = jiwer.cer(gt_norm, hyp_norm)
         return {"wer": wer, "cer": cer, "error": None}
     except ImportError:
         return {"wer": None, "cer": None,
@@ -56,14 +67,8 @@ def compute_accuracy(ground_truth: str, hypothesis: str) -> dict:
 def compute_clumping_metrics(text: str) -> dict:
     """
     Detect word-clumping errors in OCR output.
-
-    Patterns detected:
-      - Alpha-Numeric merge:   'Invoice51109'         → 'Invoice 51109'
-      - Numeric-Alpha merge:   '2013Invoice'          → '2013 Invoice'
-      - CamelCase join:        'invoiceDate'          → 'invoice Date'
-      - Keyword:value join:    'Total:$500'           → 'Total: $500'
-      - Long pure-alpha token: 'detailedinstructions' → 'detailed instructions'
-      - TitleCase run-on:      'PricesAreSubject'     → 'Prices Are Subject'
+    Uses Dictionary matching and NLP (`wordninja`) to robustly flag clumped words 
+    without relying on hardcoded glue words.
 
     Returns:
       clumped_token_count : number of tokens flagged as clumped.
@@ -77,21 +82,32 @@ def compute_clumping_metrics(text: str) -> dict:
         return {"clumped_token_count": 0, "total_token_count": 0,
                 "non_clumped_pct": 100.0, "examples": []}
 
-    clump_patterns = [
+    clumped = []
+    
+    # We maintain basic structural rules for numeric/punctuation boundaries
+    # since wordninja strictly handles alphabetic text.
+    struct_patterns = [
         re.compile(r'[a-zA-Z]{2,}\d{2,}'),              # alpha→numeric:  Invoice51109
         re.compile(r'\d{2,}[a-zA-Z]{2,}'),              # numeric→alpha:  2013Invoice
-        re.compile(r'[a-z]{2,}[A-Z][a-z]'),             # camelCase:      invoiceDate
-        re.compile(r'[A-Za-z]{3,}:[A-Za-z$£€₹\d]'),   # keyword:value:  Total:$500
-        re.compile(r'^[a-zA-Z]{16,}$'),                  # long pure-alpha: detailedinstructions
-        re.compile(r'[A-Z][a-z]{4,}[A-Z][a-z]{2,}'),   # TitleRunon:     PricesAreSubject
+        re.compile(r'[A-Za-z]{3,}:[A-Za-z$£€₹\d]'),     # keyword:value:  Total:$500
     ]
 
-    clumped = []
     for tok in tokens:
         # Strip punctuation wrappers before testing
         clean = tok.strip('.,;:!?()\'"')
-        if any(p.search(clean) for p in clump_patterns):
+        
+        # 1. Structural checks
+        if any(p.search(clean) for p in struct_patterns):
             clumped.append(tok)
+            continue
+            
+        # 2. NLP/Dictionary checks for alphabet run-ons
+        # If the word is >= 7 characters long, purely letters, and NOT a valid English word...
+        if len(clean) >= 7 and clean.isalpha():
+            if clean.lower() not in spell:
+                # If NLP splits it into multiple valid words, it is a clump
+                if len(wordninja.split(clean)) > 1:
+                    clumped.append(tok)
 
     clumped_count = len(clumped)
     non_clumped_pct = (1 - clumped_count / total) * 100
@@ -179,10 +195,11 @@ def run_pipeline_timed(
     tracemalloc.start()
     t0 = time.time()
     _, full_text, _ = extract_text_from_pdf(
-        pdf_path=pdf_path, dpi=dpi, deskew=True,
+        pdf_path=pdf_path, dpi=dpi,
         min_confidence=min_confidence, pages=pages,
         return_raw=True, exclude_patterns=exclude_patterns,
     )
+    
     elapsed = time.time() - t0
     _, peak = tracemalloc.get_traced_memory()
     tracemalloc.stop()
@@ -297,12 +314,14 @@ def parse_args():
     p.add_argument("--check-fragments", nargs="+", default=None)
     
     # Target Thresholds
-    p.add_argument("--target-wer", type=float, default=5.0, help="Target Max WER %% (default: 5.0)")
-    p.add_argument("--target-cer", type=float, default=2.0, help="Target Max CER %% (default: 2.0)")
+    p.add_argument("--target-wer", type=float, default=5.0, help="Target Max WER % (default: 5.0)")
+    p.add_argument("--target-cer", type=float, default=2.0, help="Target Max CER % (default: 2.0)")
     p.add_argument("--target-line-delta", type=int, default=5, help="Max line count difference (default: 5)")
-    p.add_argument("--target-multi-col", type=float, default=10.0, help="Min %% of multi-col lines (default: 10.0)")
-    p.add_argument("--target-clump", type=float, default=95.0, help="Min %% of non-clumped words (default: 95.0)")
-
+    p.add_argument("--target-multi-col", type=float, default=10.0, help="Min % of multi-col lines (default: 10.0)")
+    p.add_argument(
+        "--clump-target", "--target-clump", type=float, default=95.0, dest="target_clump",
+        help="Target minimum percentage of non-clumped tokens (default: 95.0%)"
+    )
     return p.parse_args()
 
 
@@ -316,8 +335,11 @@ def main():
     print(f"\n OCR Evaluation | Input: {os.path.basename(args.input)}")
     
     result = run_pipeline_timed(
-        pdf_path=args.input, dpi=args.dpi, min_confidence=args.min_confidence,
-        pages=args.pages, exclude_patterns=args.exclude,
+        pdf_path=args.input,
+        dpi=args.dpi,
+        min_confidence=args.min_confidence,
+        pages=args.pages,
+        exclude_patterns=args.exclude,
     )
     
     gt_text = None

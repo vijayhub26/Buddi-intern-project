@@ -17,7 +17,7 @@ OCRResult = List[Tuple[List, str, float]]
 def _de_clump(text: str) -> str:
     """
     Fix OCR word-clumping using structural patterns only.
-    No hardcoded vocabulary — works on any document.
+    No hardcoded vocabulary ΓÇö works on any document.
     """
     text = text.strip()
     if not text:
@@ -32,10 +32,10 @@ def _de_clump(text: str) -> str:
     # 2.5 Punctuation spacing: 'Cancel.See' -> 'Cancel. See' (ignores digits like 18,000)
     text = re.sub(r'([.?!,;])([A-Za-z])', r'\1 \2', text)
 
-    # 3. Alpha→Digit boundary: 'Invoice51109' -> 'Invoice 51109'
+    # 3. AlphaΓåÆDigit boundary: 'Invoice51109' -> 'Invoice 51109'
     text = re.sub(r'([A-Za-z])(\d)', r'\1 \2', text)
 
-    # 4. Digit→Alpha boundary: '2013Invoice' -> '2013 Invoice'
+    # 4. DigitΓåÆAlpha boundary: '2013Invoice' -> '2013 Invoice'
     text = re.sub(r'(\d)([A-Za-z]{2,})', r'\1 \2', text)
 
     # 5. Generic Dictionary-based NLP Word Splitter
@@ -122,9 +122,11 @@ def reconstruct_layout(
         h = bottom - y
         cx, cy = (x + right)/2, (y + bottom)/2
         
+        # Deduplicate identical boxes only (e.g. 10px tolerance for centers)
         is_dup = False
         for b in blocks:
-            if np.sqrt((cx - b["cx"])**2 + (cy - b["cy"])**2) < 60:
+            # Only deduplicate if boxes heavily overlap / are the same text region
+            if abs(cx - b["cx"]) < 10 and abs(cy - b["cy"]) < 10:
                 is_dup = True
                 if len(text) > len(b["text"]): b["text"] = text
                 break

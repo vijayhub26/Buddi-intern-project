@@ -42,3 +42,8 @@ results/*.png
 !results/.gitkeep
 samples/*
 !samples/.gitkeep
+
+.env
+__pycache__/
+*.pyc
+
