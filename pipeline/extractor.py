@@ -46,7 +46,7 @@ def fix_clumping(text: str) -> str:
 
 def extract_text_from_pdf(
     pdf_path: str,
-    dpi: int = 200,
+    dpi: int = 300,
     min_confidence: float = 0.0,
     pages: Optional[List[int]] = None,
     progress_callback=None,

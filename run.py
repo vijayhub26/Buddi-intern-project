@@ -100,9 +100,9 @@ def main():
     print()  # newline after progress bar
 
     # Write output as a searchable PDF (image + invisible text overlay)
-    os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)
-    from pipeline.pdf_writer import create_searchable_pdf
-    create_searchable_pdf(pages_data, args.output)
+    # os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)
+    # from pipeline.pdf_writer import create_searchable_pdf
+    # create_searchable_pdf(pages_data, args.output)
 
     # Optionally save the text layout out as a .txt file using the raw OCR data
     if args.txt:

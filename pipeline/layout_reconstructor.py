@@ -206,8 +206,9 @@ def reconstruct_layout(
         # Insert vertical spacing
         if prev_y is not None:
             gap_ratio = (line_median_y - prev_y) / median_h
-            if gap_ratio > 1.5:
-                extra_newlines = int(round(gap_ratio)) - 1
+            # Any gap 25% larger than a standard line height is a visual block break
+            if gap_ratio > 1.25:
+                extra_newlines = max(1, int(round(gap_ratio)) - 1)
                 page_str += "\n" * extra_newlines
                 
         prev_y = line_median_y

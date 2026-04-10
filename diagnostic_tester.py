@@ -141,4 +141,6 @@ def test_pipeline_phases(pdf_path: str, output_dir: str):
     print("Diagnostics saved to", output_dir)
 
 if __name__ == "__main__":
-    test_pipeline_phases("samples/test_dataset.pdf", "diagnostics")
+    import sys
+    pdf_path = sys.argv[1] if len(sys.argv) > 1 else "samples/test_dataset.pdf"
+    test_pipeline_phases(pdf_path, "diagnostics")
