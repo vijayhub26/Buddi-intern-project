@@ -51,6 +51,10 @@ def parse_args():
         "--exclude", "-e", nargs="+", default=None,
         help="Optional list of regex patterns to filter out from the OCR results."
     )
+    parser.add_argument(
+        "--ignore-symbols", action="store_true",
+        help="Filter out non-alphanumeric characters for a cleaner output (useful for noisy OCR)."
+    )
     return parser.parse_args()
 
 
@@ -91,6 +95,7 @@ def main():
         progress_callback=progress,
         return_raw=True,
         exclude_patterns=args.exclude,
+        ignore_symbols=args.ignore_symbols,
     )
     print()  # newline after progress bar
 

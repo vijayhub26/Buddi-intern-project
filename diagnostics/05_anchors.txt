@@ -1,0 +1,2 @@
+Total blocks X anchors discovered: 11
+[np.float64(90.3076923076923), np.float64(277.4), np.float64(704.1666666666666), np.float64(1321.0), np.float64(1368.0), np.float64(1659.5), np.float64(1779.8), np.float64(1950.1666666666667), np.float64(2273.0), np.float64(2346.3333333333335), np.float64(2406.0)]

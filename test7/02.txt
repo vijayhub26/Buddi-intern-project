@@ -1,0 +1,41 @@
+[Page 1]
+               Tax Invoice from LinkedIn Singapore Pte Ltd                                                                    SAC: 998439
+     Effective Date                    Transaction ID                    Invoice Number                     Purchaser Email
+     2/27/2026                         P823194156                       519209876252                       vijaydm26@gmail.com
+     Amount                            Transaction Date                  Billing Frequency                  Payment Method
+     20.00                             2/27/2026                         Monthly                            UPIv********@oksbi
+     Billed To                         Customer Tax ID
+     Vijay Bharath V                   N/A                                  Add Custom receipt details within Admin Center
+     India
+     Summary
+     Item      Description                                                                  Rate            Quantity                 Price
+               Premium Career
+     1                                                                                      2846.61         1                     2846.61
+               From February 27,2026 to March 27,2026
+     2         Promotion (100% off for 3 months)                                                                                  2846.61
+                                                                                                  Subtotal :                         20.00
+                                                                                                  GST : 0%                           20.00
+                                                                                                  Total :                            20.00
+                                                                                                  Payment :                          20.00
+                                                                                                  Balance :                          20.00
+     Linkedln Singapore Pte Ltd, 10 Marina Boulevard, Marina Bay Financial Centre Tower 2, Singapore 018983
+     SG GST: 201109821G                                                                                                           Pagelof 2
+
+
+────────────────────────────────────────────────────────────
+[Page 2]
+    in         Tax Invoice from LinkedIn Singapore Pte Ltd                                                                    SAC: 998439
+    When your offer ends on May 27, 2026 you'll pay 3846.61 (plus applicable taxes) each month until you cancel. Cancel anytime by clicking the
+    "me" icon on the homepage -> click Settings & Privacy > select Manage Premium Account -> go to Admin Center -> select your subscription -
+    Cancel. See here for detailed instructions on how to cancel.
+    Prices are subject to change.
+    You may be required to account for GST under the reverse charge procedure according to the local GST rules in your country.
+    As a Goods and Services Tax registered non resident company, we are charging you India GST of 0% as required under India tax laws. If you are
+    a registered GST business in India, reverse charge may apply
+    Have questions or need help? Please visit our Help Center
+    Signature
+        Jo
+    Wei Feng Low
+    Revenue -APAC
+    LinkedIn Singapore Pte Ltd, 10 Marina Boulevard, Marina Bay Financial Centre Tower 2, Singapore 018983
+    SG GST: 201109821G                                                                                                          Page 2 of 2
