@@ -40,16 +40,23 @@ def _normalise(text: str) -> str:
 # ──────────────────────────────────────────────────────────────
 # 2. Transcription Accuracy — CER & WER via jiwer
 # ──────────────────────────────────────────────────────────────
-def compute_accuracy(ground_truth: str, hypothesis: str) -> dict:
+def compute_accuracy(ground_truth: str, hypothesis: str, ignore_symbols: bool = False) -> dict:
     """Return CER and WER using jiwer."""
     try:
         import jiwer
+        import re
         
         # Normalize whitespace (collapse multiple spaces to one) for fair comparison.
         # This prevents the layout reconstructor's long column gaps from being counted
         # as massive word errors against standard single-spaced ground truth.
         gt_norm = re.sub(r'\s+', ' ', ground_truth).strip()
         hyp_norm = re.sub(r'\s+', ' ', hypothesis).strip()
+
+        if ignore_symbols:
+            # Re-use the same logic as the extractor for consistency
+            from pipeline.extractor import strip_symbols
+            gt_norm = strip_symbols(gt_norm)
+            hyp_norm = strip_symbols(hyp_norm)
 
         wer = jiwer.wer(gt_norm, hyp_norm)
         cer = jiwer.cer(gt_norm, hyp_norm)
@@ -322,6 +329,10 @@ def parse_args():
         "--clump-target", "--target-clump", type=float, default=95.0, dest="target_clump",
         help="Target minimum percentage of non-clumped tokens (default: 95.0%)"
     )
+    p.add_argument(
+        "--ignore-symbols", action="store_true",
+        help="Ignore symbols during WER/CER calculation for a more 'semantic' accuracy score."
+    )
     return p.parse_args()
 
 
@@ -347,7 +358,7 @@ def main():
         with open(args.ground_truth, "r", encoding="utf-8") as f:
             gt_text = f.read()
 
-    accuracy = compute_accuracy(gt_text, result["full_text"]) if gt_text else {"error": "No ground truth."}
+    accuracy = compute_accuracy(gt_text, result["full_text"], args.ignore_symbols) if gt_text else {"error": "No ground truth."}
     layout = compute_layout_metrics(result["full_text"], gt_text, args.check_fragments)
     layout["clumping"] = compute_clumping_metrics(result["full_text"])
 

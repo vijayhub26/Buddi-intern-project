@@ -8,9 +8,24 @@ from pipeline.ocr_engine import get_ocr_engine
 from pipeline.layout_reconstructor import reconstruct_layout
 from preprocessing.cleaner import clean_image
 import numpy as np
+import re
 import wordninja
 from spellchecker import SpellChecker
 _spell = SpellChecker()
+
+def strip_symbols(text: str) -> str:
+    """
+    Keep only letters, digits, and whitespace. 
+    Preserves decimal points only if they are between digits (e.g., '10.50').
+    """
+    if not text: return ""
+    # 1. First, remove everything that isn't Alphanumeric, Space, or Dot
+    text = re.sub(r'[^a-zA-Z0-9\s.]', '', text)
+    # 2. Then, remove dots that are NOT surrounded by digits on both sides
+    #    This protects prices/quantities but removes sentence-ending periods.
+    text = re.sub(r'(?<!\d)\.|\.(?!\d)', '', text)
+    return text
+
 PageResult = Tuple[int, str]  # (page_number, reconstructed_text)
 
 # Raw per-page data used for the searchable PDF overlay
@@ -37,6 +52,7 @@ def extract_text_from_pdf(
     progress_callback=None,
     return_raw: bool = False,
     exclude_patterns: Optional[List[str]] = None,
+    ignore_symbols: bool = False,
 ) -> Tuple:
     """
     Extract text from an image-based PDF preserving layout.
@@ -71,21 +87,14 @@ def extract_text_from_pdf(
 
         img_h, img_w = img.shape[:2]
 
-        # 1. Preprocess with OpenCV
+       # 1. Preprocess
         cleaned = clean_image(img)
+        img_h, img_w = cleaned.shape[:2]  # ← move here, was before clean_image()
 
         # 2. Run PaddleOCR
         ocr_results = engine.recognize(cleaned)
 
-        # 3. Downscale coordinates back by 2.0 to compensate for the cleaner.py 2x upscale
-        scaled_results = []
-        for box, text, conf in ocr_results:
-            # Box is [[x1,y1], [x2,y2], [x3,y3], [x4,y4]]
-            scaled_box = [[pt[0] / 2.0, pt[1] / 2.0] for pt in box]
-            scaled_results.append((scaled_box, text, conf))
-        ocr_results = scaled_results
-
-        # 4. Filter by confidence
+        # 3. Filter by confidence
         if min_confidence > 0.0:
             ocr_results = [r for r in ocr_results if r[2] >= min_confidence]
 
@@ -98,6 +107,9 @@ def extract_text_from_pdf(
         )
         page_results.append((page_num, page_text))
         page_text = fix_clumping(page_text)
+        
+        if ignore_symbols:
+            page_text = strip_symbols(page_text)
         # 5. Store raw data for overlay (original image + OCR boxes)
         if return_raw:
             pages_data.append({
@@ -114,6 +126,9 @@ def extract_text_from_pdf(
     full_text = separator.join(
         f"[Page {pn}]\n{text}" for pn, text in page_results
     )
+    
+    if ignore_symbols:
+        full_text = strip_symbols(full_text)
 
     if return_raw:
         return page_results, full_text, pages_data
