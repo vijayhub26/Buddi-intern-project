@@ -55,6 +55,11 @@ def parse_args():
         "--ignore-symbols", action="store_true",
         help="Filter out non-alphanumeric characters for a cleaner output (useful for noisy OCR)."
     )
+    parser.add_argument(
+        "--post-correct", action="store_true",
+        dest="post_correct",
+        help="Run LLM post-correction (via Ollama) on extracted text to fix OCR character errors."
+    )
     return parser.parse_args()
 
 
@@ -96,6 +101,7 @@ def main():
         return_raw=True,
         exclude_patterns=args.exclude,
         ignore_symbols=args.ignore_symbols,
+        post_correct=args.post_correct,
     )
     print()  # newline after progress bar
 

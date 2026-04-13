@@ -25,6 +25,14 @@ from typing import Optional, List
 import wordninja
 from spellchecker import SpellChecker
 
+# Force UTF-8 stdout to fix Windows charmap errors on report drawing
+if sys.stdout.encoding != 'utf-8':
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except AttributeError:
+        pass
+
+
 # Initialize global spell checker for the evaluator
 spell = SpellChecker()
 
@@ -46,11 +54,15 @@ def compute_accuracy(ground_truth: str, hypothesis: str, ignore_symbols: bool = 
         import jiwer
         import re
         
+        # Strip layout reconstructor metadata that artificially inflates errors
+        hyp_clean = re.sub(r'\[Page \d+\]', '', hypothesis)
+        hyp_clean = re.sub(r'─+', '', hyp_clean)
+        
         # Normalize whitespace (collapse multiple spaces to one) for fair comparison.
         # This prevents the layout reconstructor's long column gaps from being counted
         # as massive word errors against standard single-spaced ground truth.
         gt_norm = re.sub(r'\s+', ' ', ground_truth).strip()
-        hyp_norm = re.sub(r'\s+', ' ', hypothesis).strip()
+        hyp_norm = re.sub(r'\s+', ' ', hyp_clean).strip()
 
         if ignore_symbols:
             # Re-use the same logic as the extractor for consistency
@@ -197,6 +209,7 @@ def run_pipeline_timed(
     min_confidence: float,
     pages: Optional[List[int]],
     exclude_patterns: Optional[List[str]],
+    post_correct: bool = False,
 ) -> dict:
     from pipeline.extractor import extract_text_from_pdf
     tracemalloc.start()
@@ -205,6 +218,7 @@ def run_pipeline_timed(
         pdf_path=pdf_path, dpi=dpi,
         min_confidence=min_confidence, pages=pages,
         return_raw=True, exclude_patterns=exclude_patterns,
+        post_correct=post_correct,
     )
     
     elapsed = time.time() - t0
@@ -333,6 +347,10 @@ def parse_args():
         "--ignore-symbols", action="store_true",
         help="Ignore symbols during WER/CER calculation for a more 'semantic' accuracy score."
     )
+    p.add_argument(
+        "--post-correct", action="store_true",
+        help="Run LLM post-correction on the extracted text."
+    )
     return p.parse_args()
 
 
@@ -351,6 +369,7 @@ def main():
         min_confidence=args.min_confidence,
         pages=args.pages,
         exclude_patterns=args.exclude,
+        post_correct=args.post_correct,
     )
     
     gt_text = None

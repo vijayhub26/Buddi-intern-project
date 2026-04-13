@@ -1,6 +1,6 @@
 """
 End-to-end extraction orchestrator.
-Ties together: PDF rendering → preprocessing → OCR → layout reconstruction.
+Ties together: PDF rendering → preprocessing → OCR → layout reconstruction → (optional) LLM post-correction.
 """
 from typing import List, Tuple, Optional, Dict, Any
 from pipeline.pdf_renderer import render_pdf_pages, page_count
@@ -12,6 +12,15 @@ import re
 import wordninja
 from spellchecker import SpellChecker
 _spell = SpellChecker()
+
+# Lazy-loaded so startup time isn't affected when post_correct=False
+_corrector = None
+def _get_corrector():
+    global _corrector
+    if _corrector is None:
+        from pipeline.post_corrector import PostCorrector
+        _corrector = PostCorrector()
+    return _corrector
 
 def strip_symbols(text: str) -> str:
     """
@@ -31,18 +40,23 @@ PageResult = Tuple[int, str]  # (page_number, reconstructed_text)
 # Raw per-page data used for the searchable PDF overlay
 PageData = Dict[str, Any]  # {page_num, image, ocr_results, img_w, img_h}
 def fix_clumping(text: str) -> str:
-    """Split run-together words using wordninja."""
-    tokens = text.split()
-    fixed = []
-    for tok in tokens:
+    """Split run-together words using wordninja while strictly preserving layout spaces."""
+    import re
+    # Split by any whitespace, but capture the whitespace to keep it
+    parts = re.split(r'(\s+)', text)
+    for i in range(0, len(parts), 2):
+        tok = parts[i]
+        if not tok: 
+            continue
+            
         clean = tok.strip('.,;:!?()\'"')
         # Only attempt to split long pure-alpha tokens not in dictionary
         if len(clean) >= 7 and clean.isalpha() and clean.lower() not in _spell:
-            parts = wordninja.split(clean)
-            if len(parts) > 1:
-                tok = tok.replace(clean, " ".join(parts))
-        fixed.append(tok)
-    return " ".join(fixed)
+            split_parts = wordninja.split(clean)
+            if len(split_parts) > 1:
+                parts[i] = tok.replace(clean, " ".join(split_parts))
+                
+    return "".join(parts)
 
 def extract_text_from_pdf(
     pdf_path: str,
@@ -53,6 +67,7 @@ def extract_text_from_pdf(
     return_raw: bool = False,
     exclude_patterns: Optional[List[str]] = None,
     ignore_symbols: bool = False,
+    post_correct: bool = False,
 ) -> Tuple:
     """
     Extract text from an image-based PDF preserving layout.
@@ -107,10 +122,16 @@ def extract_text_from_pdf(
         )
         page_results.append((page_num, page_text))
         page_text = fix_clumping(page_text)
-        
+
+        # 5. LLM post-correction (optional)
+        if post_correct:
+            page_text = _get_corrector().correct(page_text, verbose=True)
+            # Update page_results with corrected text
+            page_results[-1] = (page_num, page_text)
+
         if ignore_symbols:
             page_text = strip_symbols(page_text)
-        # 5. Store raw data for overlay (original image + OCR boxes)
+        # 6. Store raw data for overlay (original image + OCR boxes)
         if return_raw:
             pages_data.append({
                 "page_num": page_num,

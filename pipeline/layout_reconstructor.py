@@ -115,7 +115,99 @@ def _de_fragment(text: str) -> str:
 
     text = re.sub(r'\b((?:[a-zA-Z0-9._-]+[ ]{1,2}){1,3}[a-zA-Z0-9._-]+)@([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})\b', stitch_email, text)
 
+    # 5. Collapse '$ ' before digits — OCR returns $ and amount as separate boxes
+    #    '$ 564,02' -> '$564,02',  '$ 5 640,17' -> '$5 640,17'
+    text = re.sub(r'\$\s+(\d)', r'$\1', text)
+
+    # 6. Strip spurious OCR period after lone row numbers (commented out — valid in GT)
+    #    text = re.sub(r'^(\s*\d{1,2})\.\s+(?=[A-Z])', r'\1 ', text, flags=re.MULTILINE)
+
+    # 7. Split price@spec merges — PaddleOCR fuses the gross-worth value with the
+    #    next description continuation line when they share the same Y-band.
+    #    e.g. '...527,97@3.40 Ghz' -> '...527,97\n<same-indent>@ 3.40 Ghz'
+    #    Uses the host line's own leading whitespace so the split line stays
+    #    column-aligned instead of dumping at column 0.
+    def _split_at_spec(line):
+        m = re.search(r'(\d[\d,]+)@(\d)', line)
+        if not m:
+            return line
+        indent = ' ' * (len(line) - len(line.lstrip()))
+        return line[:m.end(1)] + '\n' + indent + '@ ' + line[m.end(1) + 1:]
+    text = '\n'.join(_split_at_spec(ln) for ln in text.split('\n'))
+
+    # 8. Re-inject missing sequential item numbers in the "No." column.
+    #    PaddleOCR's DBNet detector often misses tiny isolated index tokens
+    #    (e.g. "1.", "4.", "5.", "6.") in the narrow No. column.
+    #    Strategy:
+    #      a) Detect the column positions (no_col, desc_col) from lines that DO
+    #         carry a visible number inside the ITEMS block.
+    #      b) Walk every line; if it has the qty+UM+price signature of a main item
+    #         row but no number at no_col, inject the next counter value.
+    #    Processed per-[Page] so differing indentation across pages is handled.
+    def _renumber_page(page_text: str) -> str:
+        lines = page_text.split('\n')
+
+        # -- Step 1: discover column positions from a line that has a visible index --
+        no_col = desc_col = None
+        in_items = False
+        for line in lines:
+            s = line.strip()
+            if s == 'ITEMS':
+                in_items = True
+                continue
+            if s == 'SUMMARY':
+                break
+            if not in_items:
+                continue
+            m = re.match(r'^(\s+)(\d{1,2})\.?\s{3,}(\w)', line)
+            if m and re.search(r'\d,\d\d\s{2,}\w', line):
+                no_col   = len(m.group(1))   # column where the digit lives
+                desc_col = m.start(3)         # column where description begins
+                break
+
+        if no_col is None:          # no reference line detected — leave unchanged
+            return page_text
+
+        # -- Step 2: re-walk and inject numbers where absent --
+        # A "main item row" has:  quantity (X,XX)  ·  unit word  ·  price digits
+        item_row_re = re.compile(r'\d,\d\d\s{2,}\w{2,}\s{2,}[\d,]')
+        numbered_re = re.compile(r'^\s{' + str(no_col) + r'}(\d{1,2})\.?\s')
+
+        result   = []
+        in_items = False
+        counter  = 0
+        for line in lines:
+            s = line.strip()
+            if s == 'ITEMS':
+                in_items = True
+                counter  = 0
+            elif s == 'SUMMARY':
+                in_items = False
+
+            if in_items and item_row_re.search(line):
+                m_n = numbered_re.match(line)
+                if m_n:
+                    # Line already has an index → sync counter so we stay in step
+                    counter = int(m_n.group(1))
+                else:
+                    # Missing index → inject
+                    counter  += 1
+                    num       = str(counter)
+                    pad_after = ' ' * max(1, desc_col - no_col - len(num))
+                    line      = ' ' * no_col + num + pad_after + line[desc_col:]
+
+            result.append(line)
+        return '\n'.join(result)
+
+    # Split on [Page N] markers so each page is re-numbered independently
+    parts = re.split(r'(\[Page \d+\]\n)', text)
+    text  = ''.join(
+        _renumber_page(p) if not re.match(r'\[Page \d+\]\n', p) else p
+        for p in parts
+    )
+
     return text
+
 
 
 def reconstruct_layout(
