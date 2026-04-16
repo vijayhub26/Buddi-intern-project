@@ -34,7 +34,7 @@ class PaddleOCREngine:
                 os.environ["PATH"] = cuda_path + os.pathsep + os.environ.get("PATH", "")
                 
             from paddleocr import PaddleOCR
-            self._engine = PaddleOCR(use_angle_cls=True, lang='en', show_log=False)
+            self._engine = PaddleOCR(use_angle_cls=True, lang='en', show_log=False, drop_score=0.0)
         return self._engine
 
     def recognize(self, image: np.ndarray) -> OCRResult:

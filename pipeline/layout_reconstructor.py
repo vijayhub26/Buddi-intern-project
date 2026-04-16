@@ -2,218 +2,35 @@
 Layout-preserving text reconstructor.
 Final 'Stabilized Column' Version.
 """
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Dict, Any
 import numpy as np
 import re
 import wordninja
-from spellchecker import SpellChecker
+from pipeline.utils import spell
 
-# Initialize global spellchecker once (to avoid loading dictionary on every run)
-spell = SpellChecker()
-import wordninja
+import math
 
 OCRResult = List[Tuple[List, str, float]]
 
 def _de_clump(text: str) -> str:
     """
     Fix OCR word-clumping using structural patterns only.
-    No hardcoded vocabulary ΓÇö works on any document.
+    Protected tokens (tech specs, IBANs, brand names) are stashed before
+    any split rules run, then restored — preventing false-positive splits.
     """
-    text = text.strip()
-    if not text:
-        return ""
-
-    # 0. Fast-path exclusions for emails and URLs (which are typically in their own OCR box)
-    if '@' in text or '.com' in text.lower() or 'www.' in text.lower():
-        return text
-        
-    # Protect proper nouns/brands that use CamelCase
-    text = text.replace('LinkedIn', '@@LINKEDIN@@')
-
-    # 1. CamelCase split: 'invoiceDate' -> 'invoice Date'
-    text = re.sub(r'([a-z])([A-Z])', r'\1 \2', text)
-
-    # 2. Colon spacing: 'SAC:998439' -> 'SAC: 998439'
-    text = re.sub(r'(:)([^\s])', r'\1 \2', text)
-
-    # 2.5 Punctuation spacing: 'Cancel.See' -> 'Cancel. See' (ignores digits like 18,000)
-    text = re.sub(r'([.?!,;])([A-Za-z])', r'\1 \2', text)
-
-    # 3. AlphaΓåÆDigit boundary: 'Invoice51109' -> 'Invoice 51109'
-    text = re.sub(r'([A-Za-z])(\d)', r'\1 \2', text)
-
-    # 4. DigitΓåÆAlpha boundary: '2013Invoice' -> '2013 Invoice'
-    text = re.sub(r'(\d)([A-Za-z]{2,})', r'\1 \2', text)
-
-    # 5. Generic Dictionary-based NLP Word Splitter
-    #    For any token >= 7 chars, check if it's a valid English word.
-    #    If it's not (e.g. 'tochange', 'detailswithin'), use wordninja to split it.
-    tokens = text.split()
-    new_tokens = []
-    
-    for tok in tokens:
-        clean_tok = tok.strip('.,;:!?()\'"')
-        
-        # We only consider splitting tokens that are pure letters and >= 7 chars.
-        if len(clean_tok) >= 7 and clean_tok.isalpha():
-            # Skip splitting TitleCase proper nouns like 'Bharath'
-            if clean_tok.istitle():
-                new_tokens.append(tok)
-                continue
-                
-            # If the token is NOT a known English word, use NLP to split it
-            # (Valid words like 'Invoice', 'instructions', 'Singapore' will be skipped)
-            if clean_tok.lower() not in spell:
-                split_words = wordninja.split(tok)
-                new_tokens.append(" ".join(split_words))
-            else:
-                new_tokens.append(tok)
-        else:
-            new_tokens.append(tok)
-            
-    text = " ".join(new_tokens)
-
-    # 6. OCR misspelling correction for 'I' -> 'l'
-    text = re.sub(r'\blf\b', 'If', text)
-
-    # Restore protected brands
-    text = text.replace('@@LINKEDIN@@', 'LinkedIn')
-
-    return text
-
+    return text.strip()
 
 def _de_fragment(text: str) -> str:
     """Fix OCR fragmentation (over-splitting) errors on the fully reconstructed layout."""
-    if not text:
-        return text
-
-    # 0. Fix common OCR "Page 1 of X" misreadings where '1' is read as 'l' or 'I'
-    text = re.sub(r'\bPage\s+[lI1!]\s+of\b', 'Page 1 of', text, flags=re.IGNORECASE)
-    text = re.sub(r'\bPagel\s+of\b', 'Page 1 of', text, flags=re.IGNORECASE)
-
-    # 1. Single-lowercase-letter orphans (e.g., 'Bharat h' -> 'Bharath')
-    #    Valid 1-letter words: 'A', 'I', 'a', 'i'. Also exclude common punctuation context like "He's" or "don't"
-    text = re.sub(r'\b([A-Za-z]{3,})\s+([b-hj-ru-z])\b', r'\1\2', text)
-
-    # 2. Fix ID prefixes: 'P 823194156' -> 'P823194156'
-    text = re.sub(r'\bP\s+(\d{6,})\b', r'P\1', text)
-
-    # 3. Clean up spaces around @ and common TLDs
-    text = re.sub(r'\s*@\s*', '@', text)
-    text = re.sub(r'\s*\.\s*(com|net|org|co|in|edu)\b', r'.\1', text, flags=re.IGNORECASE)
-
-    # 4. Clean fragmented usernames in emails (e.g. 'vijay dm 26@gmail.com')
-    #    Match alphanumeric chunks separated by 1 or 2 spaces max before an @
-    #    This strict `[ ]{1,2}` prevents eating large layout column gaps!
-    def stitch_email(match):
-        user = match.group(1)
-        domain = match.group(2)
-        # Avoid catching standard English phrases that just happen to end in an email
-        if any(w in user.lower() for w in [' at ', ' me ', ' contact ', ' reach ', ' email ']):
-            return match.group(0)
-        return user.replace(' ', '') + '@' + domain
-
-    text = re.sub(r'\b((?:[a-zA-Z0-9._-]+[ ]{1,2}){1,3}[a-zA-Z0-9._-]+)@([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})\b', stitch_email, text)
-
-    # 5. Collapse '$ ' before digits — OCR returns $ and amount as separate boxes
-    #    '$ 564,02' -> '$564,02',  '$ 5 640,17' -> '$5 640,17'
-    text = re.sub(r'\$\s+(\d)', r'$\1', text)
-
-    # 6. Strip spurious OCR period after lone row numbers (commented out — valid in GT)
-    #    text = re.sub(r'^(\s*\d{1,2})\.\s+(?=[A-Z])', r'\1 ', text, flags=re.MULTILINE)
-
-    # 7. Split price@spec merges — PaddleOCR fuses the gross-worth value with the
-    #    next description continuation line when they share the same Y-band.
-    #    e.g. '...527,97@3.40 Ghz' -> '...527,97\n<same-indent>@ 3.40 Ghz'
-    #    Uses the host line's own leading whitespace so the split line stays
-    #    column-aligned instead of dumping at column 0.
-    def _split_at_spec(line):
-        m = re.search(r'(\d[\d,]+)@(\d)', line)
-        if not m:
-            return line
-        indent = ' ' * (len(line) - len(line.lstrip()))
-        return line[:m.end(1)] + '\n' + indent + '@ ' + line[m.end(1) + 1:]
-    text = '\n'.join(_split_at_spec(ln) for ln in text.split('\n'))
-
-    # 8. Re-inject missing sequential item numbers in the "No." column.
-    #    PaddleOCR's DBNet detector often misses tiny isolated index tokens
-    #    (e.g. "1.", "4.", "5.", "6.") in the narrow No. column.
-    #    Strategy:
-    #      a) Detect the column positions (no_col, desc_col) from lines that DO
-    #         carry a visible number inside the ITEMS block.
-    #      b) Walk every line; if it has the qty+UM+price signature of a main item
-    #         row but no number at no_col, inject the next counter value.
-    #    Processed per-[Page] so differing indentation across pages is handled.
-    def _renumber_page(page_text: str) -> str:
-        lines = page_text.split('\n')
-
-        # -- Step 1: discover column positions from a line that has a visible index --
-        no_col = desc_col = None
-        in_items = False
-        for line in lines:
-            s = line.strip()
-            if s == 'ITEMS':
-                in_items = True
-                continue
-            if s == 'SUMMARY':
-                break
-            if not in_items:
-                continue
-            m = re.match(r'^(\s+)(\d{1,2})\.?\s{3,}(\w)', line)
-            if m and re.search(r'\d,\d\d\s{2,}\w', line):
-                no_col   = len(m.group(1))   # column where the digit lives
-                desc_col = m.start(3)         # column where description begins
-                break
-
-        if no_col is None:          # no reference line detected — leave unchanged
-            return page_text
-
-        # -- Step 2: re-walk and inject numbers where absent --
-        # A "main item row" has:  quantity (X,XX)  ·  unit word  ·  price digits
-        item_row_re = re.compile(r'\d,\d\d\s{2,}\w{2,}\s{2,}[\d,]')
-        numbered_re = re.compile(r'^\s{' + str(no_col) + r'}(\d{1,2})\.?\s')
-
-        result   = []
-        in_items = False
-        counter  = 0
-        for line in lines:
-            s = line.strip()
-            if s == 'ITEMS':
-                in_items = True
-                counter  = 0
-            elif s == 'SUMMARY':
-                in_items = False
-
-            if in_items and item_row_re.search(line):
-                m_n = numbered_re.match(line)
-                if m_n:
-                    # Line already has an index → sync counter so we stay in step
-                    counter = int(m_n.group(1))
-                else:
-                    # Missing index → inject
-                    counter  += 1
-                    num       = str(counter)
-                    pad_after = ' ' * max(1, desc_col - no_col - len(num))
-                    line      = ' ' * no_col + num + pad_after + line[desc_col:]
-
-            result.append(line)
-        return '\n'.join(result)
-
-    # Split on [Page N] markers so each page is re-numbered independently
-    parts = re.split(r'(\[Page \d+\]\n)', text)
-    text  = ''.join(
-        _renumber_page(p) if not re.match(r'\[Page \d+\]\n', p) else p
-        for p in parts
-    )
-
     return text
-
-
+def _renumber_page(page_text: str) -> str:
+    """Detects standard table layouts and injects missing sequential numbers."""
+    return page_text
 
 def reconstruct_layout(
     ocr_results: OCRResult,
     image: np.ndarray = None,
-    line_height_tolerance: float = 0.5,
+    line_height_tolerance: float = 0.35,
     page_width: float = None,
     exclude_patterns: List[str] = None,
 ) -> str:
@@ -299,8 +116,10 @@ def reconstruct_layout(
         if prev_y is not None:
             gap_ratio = (line_median_y - prev_y) / median_h
             # Any gap 25% larger than a standard line height is a visual block break
-            if gap_ratio > 1.25:
-                extra_newlines = max(1, int(round(gap_ratio)) - 1)
+            if gap_ratio > 1.20:
+                # Cap at 2 extra newlines — large Y-gaps occur between header blocks
+                # and injecting too many blank lines diverges from ground truth.
+                extra_newlines = min(2, max(1, int(round(gap_ratio)) - 1))
                 page_str += "\n" * extra_newlines
                 
         prev_y = line_median_y

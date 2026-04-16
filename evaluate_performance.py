@@ -24,6 +24,7 @@ import math
 from typing import Optional, List
 import wordninja
 from spellchecker import SpellChecker
+from pipeline.utils import spell
 
 # Force UTF-8 stdout to fix Windows charmap errors on report drawing
 if sys.stdout.encoding != 'utf-8':
@@ -31,10 +32,6 @@ if sys.stdout.encoding != 'utf-8':
         sys.stdout.reconfigure(encoding='utf-8')
     except AttributeError:
         pass
-
-
-# Initialize global spell checker for the evaluator
-spell = SpellChecker()
 
 
 # ──────────────────────────────────────────────────────────────
@@ -214,10 +211,10 @@ def run_pipeline_timed(
     from pipeline.extractor import extract_text_from_pdf
     tracemalloc.start()
     t0 = time.time()
-    _, full_text, _ = extract_text_from_pdf(
+    _, full_text = extract_text_from_pdf(
         pdf_path=pdf_path, dpi=dpi,
         min_confidence=min_confidence, pages=pages,
-        return_raw=True, exclude_patterns=exclude_patterns,
+        exclude_patterns=exclude_patterns,
         post_correct=post_correct,
     )
     
