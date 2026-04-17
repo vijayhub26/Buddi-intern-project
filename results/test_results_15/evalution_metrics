@@ -1,0 +1,26 @@
+Running evaluation at 300 DPI
+
+
+Evaluating: samples/batch1-0001.pdf
+  WER: 17.47%
+  CER: 3.66%
+  Line Δ vs GT: 1
+  Latency: 24.17s
+
+Evaluating: samples/batch2.pdf
+  WER: 19.51%
+  CER: 3.90%
+  Line Δ vs GT: 2
+  Latency: 19.47s
+
+Evaluating: samples/test_dataset.pdf
+  WER: 12.72%
+  CER: 5.31%
+  Line Δ vs GT: -2
+  Latency: 12.44s
+
+========================================
+AVERAGE METRICS
+========================================
+Average WER: 16.57%
+Average CER: 4.29%
