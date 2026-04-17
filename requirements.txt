@@ -1,11 +1,17 @@
+# Core ML & Foundational Libraries
+numpy==1.26.4  # Locked to <2.0 for PaddleOCR compatibility
+
+# PaddleOCR Engine
+paddlepaddle>=2.6.0
+paddleocr>=2.6.0
+
+# Image & PDF Processing
 opencv-python>=4.8.0
 pymupdf>=1.23.0
 Pillow>=10.0.0
 reportlab>=4.0.0
-numpy>=1.24.0
+
+# Text Utilities & Evaluation
 jiwer>=3.0.0
-
 wordninja==2.0.0
-
-pyspellchecker==0.8.0
-surya-ocr>=0.4.0
+pyspellchecker>=0.8.0

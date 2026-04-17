@@ -1,70 +1,106 @@
 import os
 import sys
+import argparse
+import re
 
 # Import core evaluating functions from your existing evaluate_performance
 from evaluate_performance import run_pipeline_timed, compute_accuracy, compute_layout_metrics
 
-datasets = [
-    {"pdf": "samples/batch1-0001.pdf", "gt": "ground_truth/groundtruth_b1.txt"},
-    {"pdf": "samples/batch2.pdf", "gt": "ground_truth/batch2.txt"},
-    {"pdf": "samples/test_dataset.pdf", "gt": "ground_truth/groundtruth_t1.txt"}
-]
+def normalize_whitespace(text: str) -> str:
+    """Collapses multiple spaces/tabs into single spaces for fairer comparison on VLMs."""
+    if not text: return ""
+    # Collapse multiple spaces but preserve newlines
+    lines = []
+    for line in text.split('\n'):
+        lines.append(" ".join(line.split()))
+    return "\n".join(lines)
 
-total_wer = 0.0
-total_cer = 0.0
-valid_wer_count = 0
+def parse_args():
+    parser = argparse.ArgumentParser(description="Batch evaluate OCR pipeline performance.")
 
-print("Running batch evaluation...")
-
-for ds in datasets:
-    pdf_path = ds["pdf"]
-    gt_path = ds["gt"]
-    
-    print(f"\nEvaluating: {pdf_path}")
-    
-    # 1. Run pipeline
-    result = run_pipeline_timed(
-        pdf_path=pdf_path,
-        dpi=300,
-        min_confidence=0.0,
-        pages=None,
-        exclude_patterns=None,
-        post_correct=False
+    parser.add_argument(
+        "--dpi", type=int, default=300,
+        help="DPI to use (default: 300). User suggested 400 for GLM."
     )
+    parser.add_argument(
+        "--strict-whitespace", action="store_true",
+        help="If set, do not normalize whitespaces before comparison."
+    )
+    return parser.parse_args()
+
+def main():
+    args = parse_args()
     
-    # 2. Read Ground Truth
-    gt_text = None
-    if os.path.exists(gt_path):
-        with open(gt_path, "r", encoding="utf-8") as f:
-            gt_text = f.read()
+    datasets = [
+        {"pdf": "samples/batch1-0001.pdf", "gt": "ground_truth/groundtruth_b1.txt"},
+        {"pdf": "samples/batch2.pdf", "gt": "ground_truth/batch2.txt"},
+        {"pdf": "samples/test_dataset.pdf", "gt": "ground_truth/groundtruth_t1.txt"}
+    ]
+
+    total_wer = 0.0
+    total_cer = 0.0
+    valid_wer_count = 0
+
+    print(f"Running batch evaluation at {args.dpi} DPI...")
+
+    for ds in datasets:
+        pdf_path = ds["pdf"]
+        gt_path = ds["gt"]
+        
+        print(f"\nEvaluating: {pdf_path}")
+        
+        # 1. Run pipeline
+        result = run_pipeline_timed(
+            pdf_path=pdf_path,
+            dpi=args.dpi,
+            min_confidence=0.0,
+            pages=None,
+            exclude_patterns=None,
+        )
+        
+        # 2. Read Ground Truth
+        gt_text = None
+        if os.path.exists(gt_path):
+            with open(gt_path, "r", encoding="utf-8") as f:
+                gt_text = f.read()
+        else:
+            print(f"  Missing GT: {gt_path}")
+            continue
+            
+        hyp_text = result["full_text"]
+        
+        # Optional: Normalize whitespace for fairer VLM comparison
+        if not args.strict_whitespace:
+            hyp_text = normalize_whitespace(hyp_text)
+            gt_text = normalize_whitespace(gt_text)
+            
+        # 3. Compute metrics
+        acc = compute_accuracy(gt_text, hyp_text, ignore_symbols=True)
+        
+        if acc.get("error"):
+            print(f"  Error calculating accuracy: {acc['error']}")
+        else:
+            wer_pct = acc['wer'] * 100
+            cer_pct = acc['cer'] * 100
+            total_wer += wer_pct
+            total_cer += cer_pct
+            valid_wer_count += 1
+            
+            print(f"  WER: {wer_pct:.2f}%")
+            print(f"  CER: {cer_pct:.2f}%")
+            
+        layout = compute_layout_metrics(result["full_text"], ground_truth=gt_text)
+        print(f"  Line Δ vs GT: {layout.get('line_count_delta', 'N/A')}")
+        print(f"  Latency: {result['latency_s']:.2f}s")
+        
+    print("\n" + "="*40)
+    print("AVERAGE METRICS")
+    print("="*40)
+    if valid_wer_count > 0:
+        print(f"Average WER: {total_wer / valid_wer_count:.2f}%")
+        print(f"Average CER: {total_cer / valid_wer_count:.2f}%")
     else:
-        print(f"  Missing GT: {gt_path}")
-        continue
-        
-    # 3. Compute metrics
-    acc = compute_accuracy(gt_text, result["full_text"], ignore_symbols=True)
-    
-    if acc.get("error"):
-        print(f"  Error calculating accuracy: {acc['error']}")
-    else:
-        wer_pct = acc['wer'] * 100
-        cer_pct = acc['cer'] * 100
-        total_wer += wer_pct
-        total_cer += cer_pct
-        valid_wer_count += 1
-        
-        print(f"  WER: {wer_pct:.2f}%")
-        print(f"  CER: {cer_pct:.2f}%")
-        
-    layout = compute_layout_metrics(result["full_text"], ground_truth=gt_text)
-    print(f"  Line Δ vs GT: {layout.get('line_count_delta', 'N/A')}")
-    print(f"  Latency: {result['latency_s']:.2f}s")
-    
-print("\n" + "="*40)
-print("AVERAGE METRICS")
-print("="*40)
-if valid_wer_count > 0:
-    print(f"Average WER: {total_wer / valid_wer_count:.2f}%")
-    print(f"Average CER: {total_cer / valid_wer_count:.2f}%")
-else:
-    print("Could not compute averages.")
+        print("Could not compute averages.")
+
+if __name__ == "__main__":
+    main()

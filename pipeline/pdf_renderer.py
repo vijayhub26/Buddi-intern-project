@@ -23,7 +23,7 @@ def render_pdf_pages(
         page_number is 1-indexed.
         image_array is a BGR numpy array (H x W x 3).
     """
-    zoom = dpi / 72  # PyMuPDF default is 72 DPI
+    zoom = dpi / 300  # PyMuPDF default is 72 DPI
     matrix = fitz.Matrix(zoom, zoom)
 
     doc = fitz.open(pdf_path)

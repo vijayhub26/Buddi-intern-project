@@ -1,5 +1,0 @@
-paddlepaddle==2.6.2
-paddleocr==2.6.1        ← downgrade this, 2.7.x broke the API
-shapely
-pyclipper
-opencv-python

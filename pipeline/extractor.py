@@ -13,15 +13,6 @@ import wordninja
 from pipeline.utils import spell
 _spell = spell
 
-# Lazy-loaded so startup time isn't affected when post_correct=False
-_corrector = None
-def _get_corrector():
-    global _corrector
-    if _corrector is None:
-        from pipeline.post_corrector import PostCorrector
-        _corrector = PostCorrector()
-    return _corrector
-
 def strip_symbols(text: str) -> str:
     """
     Keep only letters, digits, and whitespace. 
@@ -82,12 +73,12 @@ def fix_clumping(text: str) -> str:
 def extract_text_from_pdf(
     pdf_path: str,
     dpi: int = 300,
+    engine: str = "paddle",
     min_confidence: float = 0.0,
     pages: Optional[List[int]] = None,
     progress_callback=None,
     exclude_patterns: Optional[List[str]] = None,
     ignore_symbols: bool = False,
-    post_correct: bool = False,
 ) -> Tuple[List[PageResult], str]:
     """
     Extract text from an image-based PDF preserving layout.
@@ -105,7 +96,6 @@ def extract_text_from_pdf(
     Returns:
         (page_results, full_text)
     """
-    engine = get_ocr_engine()
 
     total = page_count(pdf_path)
     page_results: List[PageResult] = []
@@ -117,14 +107,12 @@ def extract_text_from_pdf(
         if progress_callback:
             progress_callback(page_num, total)
 
-        img_h, img_w = img.shape[:2]
-
-       # 1. Preprocess
         cleaned = clean_image(img)
-        img_h, img_w = cleaned.shape[:2]  # ← move here, was before clean_image()
+        img_h, img_w = cleaned.shape[:2]
 
+        paddle_engine = get_ocr_engine()
         # 2. Run PaddleOCR
-        ocr_results = engine.recognize(cleaned)
+        ocr_results = paddle_engine.recognize(cleaned)
 
         # 3. Filter by confidence
         if min_confidence > 0.0:
@@ -139,12 +127,6 @@ def extract_text_from_pdf(
         )
         page_results.append((page_num, page_text))
         page_text = fix_clumping(page_text)
-
-        # 5. LLM post-correction (optional)
-        if post_correct:
-            page_text = _get_corrector().correct(page_text, verbose=True)
-            # Update page_results with corrected text
-            page_results[-1] = (page_num, page_text)
 
         if ignore_symbols:
             page_text = strip_symbols(page_text)

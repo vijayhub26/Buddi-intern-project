@@ -206,16 +206,15 @@ def run_pipeline_timed(
     min_confidence: float,
     pages: Optional[List[int]],
     exclude_patterns: Optional[List[str]],
-    post_correct: bool = False,
 ) -> dict:
     from pipeline.extractor import extract_text_from_pdf
     tracemalloc.start()
     t0 = time.time()
     _, full_text = extract_text_from_pdf(
         pdf_path=pdf_path, dpi=dpi,
-        min_confidence=min_confidence, pages=pages,
+        min_confidence=min_confidence,
+        pages=pages,
         exclude_patterns=exclude_patterns,
-        post_correct=post_correct,
     )
     
     elapsed = time.time() - t0
@@ -344,10 +343,7 @@ def parse_args():
         "--ignore-symbols", action="store_true",
         help="Ignore symbols during WER/CER calculation for a more 'semantic' accuracy score."
     )
-    p.add_argument(
-        "--post-correct", action="store_true",
-        help="Run LLM post-correction on the extracted text."
-    )
+
     return p.parse_args()
 
 
@@ -366,7 +362,6 @@ def main():
         min_confidence=args.min_confidence,
         pages=args.pages,
         exclude_patterns=args.exclude,
-        post_correct=args.post_correct,
     )
     
     gt_text = None

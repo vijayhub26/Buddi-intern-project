@@ -22,16 +22,9 @@ class PaddleOCREngine:
         if self._engine is None:
             import os
             
-            # Prevent Paddle from allocating 100% of GPU VRAM up front. 
-            # This leaves room for Ollama so we don't get HTTP 500 Out-Of-Memory crashes!
-            os.environ["FLAGS_fraction_of_gpu_memory_to_use"] = "0.1"
-            os.environ["FLAGS_fraction_of_gpu_memory_to_use"] = "0.15"
+            # Allow Paddle to dynamically grow VRAM usage instead of claiming it all upfront
             os.environ["FLAGS_allocator_strategy"] = "auto_growth"
-            
-            # Force Python to see the CUDA 12.1 Toolkit path for cublasLt64_12.dll
-            cuda_path = r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.1\bin"
-            if os.path.exists(cuda_path) and cuda_path not in os.environ.get("PATH", ""):
-                os.environ["PATH"] = cuda_path + os.pathsep + os.environ.get("PATH", "")
+            os.environ["FLAGS_fraction_of_gpu_memory_to_use"] = "0.8"
                 
             from paddleocr import PaddleOCR
             self._engine = PaddleOCR(use_angle_cls=True, lang='en', show_log=False, drop_score=0.0)

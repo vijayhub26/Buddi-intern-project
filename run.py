@@ -29,6 +29,7 @@ def parse_args():
         "--dpi", type=int, default=200,
         help="Rendering DPI for PDF pages (default: 200)."
     )
+
     parser.add_argument(
         "--min-confidence", type=float, default=0.0,
         help="Minimum OCR confidence to include a text block (0.0–1.0)."
@@ -44,11 +45,6 @@ def parse_args():
     parser.add_argument(
         "--ignore-symbols", action="store_true",
         help="Filter out non-alphanumeric characters for a cleaner output (useful for noisy OCR)."
-    )
-    parser.add_argument(
-        "--post-correct", action="store_true",
-        dest="post_correct",
-        help="Run LLM post-correction (via Ollama) on extracted text to fix OCR character errors."
     )
     return parser.parse_args()
 
@@ -90,7 +86,6 @@ def main():
         progress_callback=progress,
         exclude_patterns=args.exclude,
         ignore_symbols=args.ignore_symbols,
-        post_correct=args.post_correct,
     )
     print()  # newline after progress bar
 
